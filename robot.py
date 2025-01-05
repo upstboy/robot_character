@@ -4,22 +4,29 @@ from ohbot import ohbot
 import random
 import threading
 import argparse
+import sys
+import tkinter as tk
+from threading import Lock
+import queue
 
 class OhbotCharacterAgent(AICharacterAgent):
     """
-    OhbotCharacterAgent extends AICharacterAgent to add Ohbot-specific behaviors.
-    
-    Important methods from AICharacterAgent:
-    - _on_speaking_state_changed(is_speaking): Override to handle speaking state changes.
-    - run(): Override to implement the main interaction loop.
-    - stop(): Override to handle cleanup and shutdown.
-    
-    This class adds methods for animating gestures and head movements specific to the Ohbot robot.
+    OhbotCharacterAgent extends AICharacterAgent to add Ohbot-specific behaviors
+    and integrates a fullscreen display for rendering text.
     """
+    
     def __init__(self, config_path, debug=False):
         super().__init__(config_path, debug)
         self.motor_enabled = True
         self._is_speaking = False
+        self.display_lock = Lock()
+        self.display_queue = queue.Queue()  # Queue for GUI updates
+        self.root = None
+        self.label = None
+        
+        # Setup display
+        self._setup_display()
+        self.add_display_callback(self._queue_display)
         
         # Initialize Ohbot
         print("Initializing Ohbot...")
@@ -33,46 +40,130 @@ class OhbotCharacterAgent(AICharacterAgent):
         # Add talking animation thread
         self.talking_thread = None
 
-    def _on_speaking_state_changed(self, is_speaking):
-        """
-        This method is called when the speaking state changes.
-        It animates the robot's mouth and head movements based on the current response.
-        """
+        # Start the GUI update loop
+        self._process_queue()
 
+    def _setup_display(self):
+        """Setup the fullscreen display for rendering text."""
+        self.root = tk.Tk()
+        self.root.attributes('-fullscreen', True)
+        self.root.configure(background='black')
+        
+        # Create label for text
+        self.label = tk.Label(
+            self.root,
+            text="",
+            fg='white',
+            bg='black',
+            wraplength=self.root.winfo_screenwidth() - 40,  # Leave some margin
+            justify="center"
+        )
+        self.label.pack(expand=True)
+        
+        # Bind escape key to toggle fullscreen
+        self.root.bind('<Escape>', lambda e: self.root.attributes('-fullscreen', False))
+        self.root.bind('<F11>', lambda e: self.root.attributes('-fullscreen', True))
+        
+        # Update the window without blocking
+        self.root.update()
+
+    def _queue_display(self, text):
+        """Put display update requests in the queue."""
+        self.display_queue.put(text)
+
+    def _process_queue(self):
+        """Process the display queue and update the GUI."""
+        try:
+            if not self.display_queue.empty():
+                text = self.display_queue.get()
+                self._update_display(text)
+        finally:
+            # Schedule the next check
+            self.root.after(100, self._process_queue)
+
+    def _update_display(self, text):
+        """Update the GUI with the given text (must be called on the main thread)."""
+        if text:
+            # Clear existing text
+            self.label.config(text="")
+            self.root.update()
+
+            # Start with a large font size and adjust down if needed
+            font_size = 100
+            self.label.config(font=('Arial', font_size))
+            self.label.config(text=text)
+
+            # Adjust font size until text fits
+            while (self.label.winfo_reqwidth() > self.root.winfo_width() * 0.9 or
+                self.label.winfo_reqheight() > self.root.winfo_height() * 0.9) and font_size > 10:
+                font_size -= 5
+                self.label.config(font=('Arial', font_size))
+
+            self.root.update()
+        else:
+            self.label.config(text="")
+            self.root.update()
+
+    def _on_speaking_state_changed(self, is_speaking):
+        """Override to handle speaking state changes and update display."""
         super()._on_speaking_state_changed(is_speaking)
         self._is_speaking = is_speaking
 
         if is_speaking:
-        
             # Get the current response being spoken from the character
             current_text = self.character.current_response
             if self.debug:
                 print(f"\nPreparing gesture for text: {current_text}")
         
+            # Show the text on the display
+            self._queue_display(current_text)
+        
             # Prepare and execute gesture based on text
             self._prepare_gesture(current_text)
         
-            # Start talking animation in a separate thread
-            self.talking_thread = threading.Thread(target=self._animate_talking, daemon=True)
-            self.talking_thread.start()
+            # Start talking animation in a separate thread if not already running
+            if self.talking_thread is None or not self.talking_thread.is_alive():
+                self.talking_thread = threading.Thread(target=self._animate_talking, daemon=True)
+                self.talking_thread.start()
         else:
             self._close_mouth()
+            self._is_speaking = False  # Ensure speaking state is properly reset
+            self._queue_display("")  # Clear display when not speaking
+
+    def run(self):
+        """Override run to handle GUI updates."""
+        try:
+            super().run()
+            self.root.mainloop()  # Start the GUI event loop
+        finally:
+            if self.root:
+                self.root.destroy()
+
+    def stop(self):
+        """Override stop to cleanup GUI."""
+        super().stop()
+        if self.root:
+            self.root.quit()
 
     def _animate_talking(self):
-        """Animate mouth while talking"""
+        """Animate mouth while talking."""
         while self._is_speaking:
-            # Randomize mouth opening amount
-            top_open = random.uniform(7, 9)
-            bottom_open = random.uniform(7, 9)
-            
-            ohbot.move(ohbot.TOPLIP, top_open)
-            ohbot.move(ohbot.BOTTOMLIP, bottom_open)
-            ohbot.wait(random.uniform(0.1, 0.3))
-            
-            closed_pos = random.uniform(4.5, 5.5)
-            ohbot.move(ohbot.TOPLIP, closed_pos)
-            ohbot.move(ohbot.BOTTOMLIP, closed_pos)
-            ohbot.wait(random.uniform(0.1, 0.25))
+            try:
+                # Randomize mouth opening amount
+                top_open = random.uniform(6.5, 8.5)
+                bottom_open = random.uniform(6.5, 8.5)
+                
+                ohbot.move(ohbot.TOPLIP, top_open)
+                ohbot.move(ohbot.BOTTOMLIP, bottom_open)
+                ohbot.wait(random.uniform(0.15, 0.25))  # Slightly longer wait for smoother animation
+                
+                closed_pos = random.uniform(4.8, 5.2)
+                ohbot.move(ohbot.TOPLIP, closed_pos)
+                ohbot.move(ohbot.BOTTOMLIP, closed_pos)
+                ohbot.wait(random.uniform(0.1, 0.2))  # Slight pause when closing the mouth
+            except Exception as e:
+                print(f"Error in talking animation: {e}")
+                break
 
     def _random_head_movement(self):
         """Continuous random head movement thread"""
@@ -183,29 +274,6 @@ class OhbotCharacterAgent(AICharacterAgent):
         ohbot.move(ohbot.BOTTOMLIP, 5)
         ohbot.wait(0.1)
 
-    def stop(self):
-        """Cleanup and shutdown"""
-        self.running = False
-        if self.motor_enabled:
-            self._center_position()
-        ohbot.close()
-        super().stop()
-
-    def run(self):
-        """Run the main interaction loop with robot behaviors"""
-        try:
-            # Initialize robot position
-            self._center_position()
-            
-            # Use parent class run logic
-            super().run()
-
-        except KeyboardInterrupt:
-            if self.debug:
-                print("\nStopping robot character...")
-        finally:
-            self.stop()
-
     def _perform_agreement(self):
         """Nod head up and down"""
         try:
@@ -253,15 +321,19 @@ class OhbotCharacterAgent(AICharacterAgent):
         except Exception as e:
             print(f"Error in excited gesture: {e}")
 
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--config", required=True)
-    parser.add_argument("--debug", action="store_true")
+def main():
+    parser = argparse.ArgumentParser(description="Runner for AICharacterAgent")
+    parser.add_argument("--config", required=True, help="Path to config YAML")
+    parser.add_argument("--debug", action="store_true", help="Enable debug")
     args = parser.parse_args()
 
-    robot = OhbotCharacterAgent(args.config, args.debug)
+    agent = OhbotCharacterAgent(args.config, debug=args.debug)
     try:
-        robot.run()
+        agent.run()
     except KeyboardInterrupt:
-        pass
-    robot.stop()
+        agent.stop()
+        print("\nStopped by user.")
+        sys.exit(0)
+
+if __name__ == "__main__":
+    main()
