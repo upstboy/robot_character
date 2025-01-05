@@ -27,6 +27,9 @@ class OhbotCharacterAgent(AICharacterAgent):
         # Setup display
         self._setup_display()
         self.add_display_callback(self._queue_display)
+
+        # Show intro message
+        self._show_intro_message()
         
         # Initialize Ohbot
         print("Initializing Ohbot...")
@@ -66,6 +69,23 @@ class OhbotCharacterAgent(AICharacterAgent):
         
         # Update the window without blocking
         self.root.update()
+
+    def _show_intro_message(self):
+        """Display a welcoming message and list of capabilities."""
+        intro_text = (
+            "Hi there! I'm your friendly robot buddy.\n"
+            "Here are some fun things I can do:\n"
+            "- Play trivia\n"
+            "- Tell jokes\n"
+            "- Read stories\n"
+            "- Sing songs\n"
+            "- Answer your questions\n"
+            "- Describe what I see\n"
+            "- Play 'Simon Says'\n"
+            "Just say something, and I'll try to respond!"
+        )
+        self._queue_display(intro_text)
+
 
     def _queue_display(self, text):
         """Put display update requests in the queue."""
