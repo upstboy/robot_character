@@ -45,3 +45,6 @@ dmypy.json
 
 # Ohbot data folder
 ohbotData/
+
+# Ignore view.jpg
+view.jpg
