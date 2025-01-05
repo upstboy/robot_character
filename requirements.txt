@@ -1,0 +1,17 @@
+openai
+sounddevice
+numpy
+pygame
+pydub
+elevenlabs
+PyYAML
+opencv-python
+requests
+ollama
+groq
+scipy
+ohbot
+playsound==1.2.2
+pyserial
+lxml 
+ai_character
