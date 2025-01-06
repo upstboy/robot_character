@@ -174,10 +174,10 @@ class OhbotCharacterAgent(AICharacterAgent):
     def _setup_pids(self):
         """Setup PID controllers for each motor"""
         pids = {}
-        # Tune these values based on your needs
-        Kp = 0.8  # Proportional gain
-        Ki = 0.1  # Integral gain
-        Kd = 0.05  # Derivative gain
+        # Increased gains for more responsive movement
+        Kp = 1.5  # Increased proportional gain
+        Ki = 0.2  # Increased integral gain
+        Kd = 0.1  # Increased derivative gain
         
         # Create PID controller for each motor
         motor_types = [
@@ -200,7 +200,7 @@ class OhbotCharacterAgent(AICharacterAgent):
         
         return pids
 
-    def _move_motor_smooth(self, motor_id, target_position, duration=1.0):
+    def _move_motor_smooth(self, motor_id, target_position, duration=0.5):  # Reduced default duration
         """
         Move a motor smoothly to target position using PID control
         """
@@ -212,16 +212,16 @@ class OhbotCharacterAgent(AICharacterAgent):
             current_pos = self.current_positions[motor_id]
             control = pid(current_pos)
             
-            # Update position
-            new_pos = current_pos + control * 0.1  # Scale factor for smooth movement
+            # Increased movement scale for faster response
+            new_pos = current_pos + control * 0.2  # Increased scale factor
             new_pos = max(0, min(10, new_pos))  # Clamp between 0 and 10
             
             # Move motor
             ohbot.move(motor_id, new_pos)
             self.current_positions[motor_id] = new_pos
             
-            # Small delay for smooth movement
-            time.sleep(0.01)
+            # Reduced delay for faster updates
+            time.sleep(0.005)
             
             # Check if we're close enough to target
             if abs(new_pos - target_position) < 0.1:
