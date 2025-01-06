@@ -1,6 +1,12 @@
 # Sir Blink-a-lot: An Interactive Ohbot Robot Character
 
-Sir Blink-a-lot is an expressive robotic character built using the Ohbot platform and enhanced with AI capabilities. This robot can engage in natural conversations, display emotions through movement, and interact with humans in an engaging way.
+Sir Blink-a-lot is an expressive robotic character built using the Ohbot platform and enhanced with AI capabilities.
+
+![SirBlinksALot_Main](https://github.com/user-attachments/assets/3a4d3e39-1fe9-4c0f-80ef-77719fa9318d)
+
+This robot can engage in natural conversations, display emotions through movement, and interact with humans in an engaging way.
+
+![SirBlinksALot_Trivia](https://github.com/user-attachments/assets/c088a004-bfe9-48c0-870f-79c633bbda69)
 
 ## Features
 
