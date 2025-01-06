@@ -8,6 +8,8 @@ import sys
 import tkinter as tk
 from threading import Lock
 import queue
+from simple_pid import PID
+from collections import defaultdict
 
 class OhbotCharacterAgent(AICharacterAgent):
     """
@@ -23,6 +25,10 @@ class OhbotCharacterAgent(AICharacterAgent):
         self.display_queue = queue.Queue()  # Queue for GUI updates
         self.root = None
         self.label = None
+        
+        # Initialize PID controllers for each motor
+        self.pids = self._setup_pids()
+        self.current_positions = defaultdict(lambda: 5.0)  # Default center position
         
         # Setup display
         self._setup_display()
@@ -99,7 +105,7 @@ class OhbotCharacterAgent(AICharacterAgent):
                 self._update_display(text)
         finally:
             # Schedule the next check
-            self.root.after(100, self._process_queue)
+            self.root.after(500, self._process_queue)
 
     def _update_display(self, text):
         """Update the GUI with the given text (must be called on the main thread)."""
@@ -165,6 +171,66 @@ class OhbotCharacterAgent(AICharacterAgent):
         if self.root:
             self.root.quit()
 
+    def _setup_pids(self):
+        """Setup PID controllers for each motor"""
+        pids = {}
+        # Tune these values based on your needs
+        Kp = 0.8  # Proportional gain
+        Ki = 0.1  # Integral gain
+        Kd = 0.05  # Derivative gain
+        
+        # Create PID controller for each motor
+        motor_types = [
+            ohbot.HEADNOD,
+            ohbot.HEADTURN,
+            ohbot.EYETURN,
+            ohbot.EYETILT,
+            ohbot.TOPLIP,
+            ohbot.BOTTOMLIP,
+            ohbot.LIDBLINK
+        ]
+        
+        for motor in motor_types:
+            pids[motor] = PID(
+                Kp, Ki, Kd,
+                setpoint=5.0,  # Center position
+                output_limits=(0, 10),  # Min/max motor positions
+                sample_time=0.01  # Update every 10ms
+            )
+        
+        return pids
+
+    def _move_motor_smooth(self, motor_id, target_position, duration=1.0):
+        """
+        Move a motor smoothly to target position using PID control
+        """
+        pid = self.pids[motor_id]
+        pid.setpoint = target_position
+        start_time = time.time()
+        
+        while time.time() - start_time < duration:
+            current_pos = self.current_positions[motor_id]
+            control = pid(current_pos)
+            
+            # Update position
+            new_pos = current_pos + control * 0.1  # Scale factor for smooth movement
+            new_pos = max(0, min(10, new_pos))  # Clamp between 0 and 10
+            
+            # Move motor
+            ohbot.move(motor_id, new_pos)
+            self.current_positions[motor_id] = new_pos
+            
+            # Small delay for smooth movement
+            time.sleep(0.01)
+            
+            # Check if we're close enough to target
+            if abs(new_pos - target_position) < 0.1:
+                break
+
+    def move(self):
+        """Create a new movement instance for chaining."""
+        return Movement(self)
+
     def _animate_talking(self):
         """Animate mouth while talking."""
         while self._is_speaking:
@@ -186,7 +252,7 @@ class OhbotCharacterAgent(AICharacterAgent):
                 break
 
     def _random_head_movement(self):
-        """Continuous random head movement thread"""
+        """Continuous random head movement thread with smooth movements"""
         while self.running:
             try:
                 # Random movement type (0: normal, 1: look around, 2: focused look)
@@ -218,19 +284,25 @@ class OhbotCharacterAgent(AICharacterAgent):
                 # Randomly decide if we should blink
                 should_blink = random.random() < 0.3  # 30% chance to blink
                 
-                # Execute movements
-                ohbot.move(ohbot.HEADTURN, head_turn, 2)
-                ohbot.move(ohbot.HEADNOD, head_nod, 2)
-                ohbot.move(ohbot.EYETURN, eye_turn, 3)  # Slightly faster eye movements
-                ohbot.move(ohbot.EYETILT, eye_tilt, 3)
+                # Execute movements with smooth transitions
+                if movement_type == 0:  # Normal subtle movements
+                    self._move_motor_smooth(ohbot.HEADTURN, head_turn, duration=1.0)
+                    self._move_motor_smooth(ohbot.HEADNOD, head_nod, duration=1.0)
+                    self._move_motor_smooth(ohbot.EYETURN, eye_turn, duration=0.5)
+                    self._move_motor_smooth(ohbot.EYETILT, eye_tilt, duration=0.5)
                 
-                # If blinking, do a quick blink motion
-                if should_blink:
-                    if self.debug:
-                        print("Blinking...")
-                    ohbot.move(ohbot.LIDBLINK, 10, 10)  # Close eyes quickly
-                    ohbot.wait(0.1)
-                    ohbot.move(ohbot.LIDBLINK, 0, 10)   # Open eyes quickly
+                elif movement_type == 1:  # Look around
+                    self._move_motor_smooth(ohbot.HEADTURN, head_turn, duration=0.8)
+                    self._move_motor_smooth(ohbot.EYETURN, eye_turn, duration=0.4)
+                    self._move_motor_smooth(ohbot.HEADNOD, head_nod, duration=0.8)
+                    self._move_motor_smooth(ohbot.EYETILT, eye_tilt, duration=0.4)
+                
+                else:  # Focused look
+                    self._move_motor_smooth(ohbot.EYETURN, eye_turn, duration=0.3)
+                    self._move_motor_smooth(ohbot.EYETILT, eye_tilt, duration=0.3)
+                    time.sleep(0.2)
+                    self._move_motor_smooth(ohbot.HEADTURN, head_turn, duration=0.6)
+                    self._move_motor_smooth(ohbot.HEADNOD, head_nod, duration=0.6)
                 
                 # Random wait between movements
                 if movement_type == 0:
@@ -239,6 +311,17 @@ class OhbotCharacterAgent(AICharacterAgent):
                     time.sleep(random.uniform(0.5, 1.5))  # Shorter pauses when looking around
                 else:
                     time.sleep(random.uniform(2, 4))  # Longer pauses when focused
+                
+                # Randomly decide if we should blink
+                should_blink = random.random() < 0.3  # 30% chance to blink
+                
+                # If blinking, do a quick blink motion
+                if should_blink:
+                    if self.debug:
+                        print("Blinking...")
+                    ohbot.move(ohbot.LIDBLINK, 10, 10)  # Close eyes quickly
+                    ohbot.wait(0.1)
+                    ohbot.move(ohbot.LIDBLINK, 0, 10)   # Open eyes quickly
                 
             except Exception as e:
                 print(f"Head movement error: {e}")
@@ -278,20 +361,15 @@ class OhbotCharacterAgent(AICharacterAgent):
             self._perform_excited()
 
     def _center_position(self):
-        """Move all motors to center position"""
-        ohbot.move(ohbot.HEADTURN, 5)
-        ohbot.move(ohbot.HEADNOD, 5)
-        ohbot.move(ohbot.EYETURN, 5)
-        ohbot.move(ohbot.EYETILT, 5)
-        ohbot.move(ohbot.LIDBLINK, 0)
-        ohbot.move(ohbot.TOPLIP, 5)
-        ohbot.move(ohbot.BOTTOMLIP, 5)
-        ohbot.wait(0.5)
+        """Move all motors to center position smoothly"""
+        for motor_id in self.pids.keys():
+            self._move_motor_smooth(motor_id, 5.0, duration=1.0)
 
     def _close_mouth(self):
-        """Ensure mouth is closed"""
-        ohbot.move(ohbot.TOPLIP, 5)
-        ohbot.move(ohbot.BOTTOMLIP, 5)
+        """Ensure mouth is completely closed using direct motor control"""
+        closed_pos = 5.0
+        ohbot.move(ohbot.TOPLIP, closed_pos, 10)
+        ohbot.move(ohbot.BOTTOMLIP, closed_pos, 10)
         ohbot.wait(0.1)
 
     def _perform_agreement(self):
@@ -340,6 +418,52 @@ class OhbotCharacterAgent(AICharacterAgent):
             ohbot.move(ohbot.EYETILT, 5)
         except Exception as e:
             print(f"Error in excited gesture: {e}")
+
+class Movement:
+    """
+    A fluent interface for chaining robot movements.
+    """
+    def __init__(self, agent):
+        self.agent = agent
+        self.commands = []
+
+    def head_nod(self, position):
+        """Add head nod command."""
+        self.commands.append(('head_nod', position))
+        return self
+
+    def head_turn(self, position):
+        """Add head turn command."""
+        self.commands.append(('head_turn', position))
+        return self
+
+    def eye_turn(self, position):
+        """Add eye turn command."""
+        self.commands.append(('eye_turn', position))
+        return self
+
+    def eye_tilt(self, position):
+        """Add eye tilt command."""
+        self.commands.append(('eye_tilt', position))
+        return self
+
+    def execute(self, wait=False, duration=0.3):
+        """Execute all commands."""
+        for command, position in self.commands:
+            if command == 'head_nod':
+                self.agent._move_motor_smooth(ohbot.HEADNOD, position, duration)
+            elif command == 'head_turn':
+                self.agent._move_motor_smooth(ohbot.HEADTURN, position, duration)
+            elif command == 'eye_turn':
+                self.agent._move_motor_smooth(ohbot.EYETURN, position, duration)
+            elif command == 'eye_tilt':
+                self.agent._move_motor_smooth(ohbot.EYETILT, position, duration)
+
+            if wait:
+                time.sleep(duration)
+
+        # Clear commands after execution
+        self.commands.clear()
 
 def main():
     parser = argparse.ArgumentParser(description="Runner for AICharacterAgent")
