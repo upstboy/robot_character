@@ -76,6 +76,23 @@ python robot.py --config sirblinkalot.yaml [--debug]
 - queue
 - argparse
 
+## API Requirements
+Sir Blink-a-lot requires API keys for OpenAI and Eleven Labs to enable conversation and voice capabilities.
+
+Set up your API keys in your environment:
+
+### On Unix/macOS:
+```bash
+export OPENAI_API_KEY="your-api-key"
+export ELEVEN_API_KEY="your-api-key"
+```
+
+### On Windows:
+```bash
+set OPENAI_API_KEY=your-api-key
+set ELEVEN_API_KEY=your-api-key
+```
+
 ## Safety
 The program can be safely terminated using Ctrl+C, which will properly clean up resources and stop all motor movements.
 
