@@ -8,6 +8,9 @@ This robot can engage in natural conversations, display emotions through movemen
 
 ![SirBlinksALot_Trivia](https://github.com/user-attachments/assets/c088a004-bfe9-48c0-870f-79c633bbda69)
 
+## Demo video
+https://www.youtube.com/watch?v=B9AMRwF5B-0
+
 ## Features
 
 ### Interactive Capabilities
